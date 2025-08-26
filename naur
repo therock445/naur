@@ -1,0 +1,84 @@
+#!/bin/bash
+aur="https://aur.archlinux.org"
+github="https://github.com/archlinux/aur.git"
+install_pkg() {
+    local pkg="$1"
+    local use_github="$2"
+    echo "verifying $pkg exists in aur"
+    exists=$(curl -s "$aur/rpc/?v=5&type=info&arg=$pkg" | jq '.results | length > 0')
+    if [ "$exists" != "true" ]; then
+        echo "$pkg does not exist"
+        return 1
+    fi
+    echo "$pkg exists, proceeding with installation"
+    tmpdir=$(mktemp -d)
+    cd "$tmpdir" || exit 1
+    echo "cloning $pkg from aur"
+    git clone "$aur/$pkg.git" "$pkg"
+    cd "$pkg" || exit 1
+    if [ ! -f PKGBUILD ]; then
+        echo "error: PKGBUILD does not exist in $pkg"
+        cd ..
+        rm -rf "$tmpdir"
+        return 1
+    fi
+    makepkg -si
+    cd ..
+    rm -rf "$tmpdir"
+}
+search_pkg() {
+    local query="$1"
+    echo "searching aur for '$query'"
+    curl -s "$aur/rpc/?v=5&type=search&arg=$query" | jq -r '.results[].Name'
+}
+info_pkg() {
+    local pkg="$1"
+    echo "getting info for $pkg"
+    curl -s "$aur/rpc/?v=5&type=info&arg=$pkg" \
+        | jq -r '.results[] | .Name, .Version, .URL, .Description'
+}
+remove_build_deps() {
+    echo "removing all build dependencies installed by makepkg"
+    sudo pacman -Rns $(pacman -Qdtq) 2>/dev/null || echo "no orphaned build deps found"
+}
+USE_GITHUB=false
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -S) ACTION="install"; shift ;;
+        --github) USE_GITHUB=true; shift ;;
+        -Ss) ACTION="search"; shift ;;
+        -Si) ACTION="info"; shift ;;
+        -R) ACTION="remove-build-deps"; shift ;;
+        *) PKG="$1"; shift ;;
+    esac
+done
+case "$ACTION" in
+    install)
+        if [ -n "$PKG" ]; then
+            install_pkg "$PKG" "$USE_GITHUB"
+        else
+            echo "please provide a package to install"
+        fi
+        ;;
+    search)
+        if [ -n "$PKG" ]; then
+            search_pkg "$PKG"
+        else
+            echo "please provide a search query"
+        fi
+        ;;
+    info)
+        if [ -n "$PKG" ]; then
+            info_pkg "$PKG"
+        else
+            echo "please provide a package for info"
+        fi
+        ;;
+    remove-build-deps)
+        remove_build_deps
+        ;;
+    *)
+        echo "usage: $0 -S [--github] package | -Ss query | -Si package | -R"
+        echo "made by therock to help with the ongoing ddos"
+        ;;
+esac
