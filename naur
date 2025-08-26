@@ -13,8 +13,15 @@ install_pkg() {
     echo "$pkg exists, proceeding with installation"
     tmpdir=$(mktemp -d)
     cd "$tmpdir" || exit 1
-    echo "cloning $pkg from aur"
-    git clone "$aur/$pkg.git" "$pkg"
+
+    if [ "$use_github" = true ]; then
+        echo "cloning $pkg from the github mirror"
+        git clone --branch "$pkg" --single-branch "$github" "$pkg"
+    else
+        echo "cloning $pkg from aur"
+        git clone "$aur/$pkg.git" "$pkg"
+    fi
+
     cd "$pkg" || exit 1
     if [ ! -f PKGBUILD ]; then
         echo "error: PKGBUILD does not exist in $pkg"
